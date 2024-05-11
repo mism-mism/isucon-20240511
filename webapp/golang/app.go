@@ -470,8 +470,7 @@ FROM
     posts AS p
 JOIN
     users AS u ON p.user_id = u.id
-WHERE
-    WHERE p.user_id = ?
+WHERE p.user_id = ?
  ORDER BY p.created_at DESC
 `
 	err = db.Select(&results, query, user.ID)
