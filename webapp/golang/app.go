@@ -88,6 +88,40 @@ func dbInitialize() {
 	for _, sql := range sqls {
 		db.Exec(sql)
 	}
+	posts := make([]Post, 0)
+	err := db.Select(&posts, "SELECT * FROM posts")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	// 並列で保存するようにする
+	for _, post := range posts {
+		go saveImage(post) // 各画像保存操作をgoroutineで実行
+	}
+}
+
+func saveImage(post Post) {
+	ext := ""
+	switch post.Mime {
+	case "image/jpeg":
+		ext = "jpg"
+	case "image/png":
+		ext = "png"
+	case "image/gif":
+		ext = "gif"
+	}
+	if ext == "" {
+		return
+	}
+
+	path := fmt.Sprintf("../public/image/%d.%s", post.ID, ext)
+	if _, err := os.Stat(path); err == nil {
+		return // ファイルが存在する場合はスキップ
+	}
+
+	if err := os.WriteFile(path, post.Imgdata, 0644); err != nil {
+		log.Print(err)
+	}
 }
 
 func tryLogin(accountName, password string) *User {
@@ -614,14 +648,18 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
+	ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
+			ext = "jpg"
 			mime = "image/jpeg"
 		} else if strings.Contains(contentType, "png") {
+			ext = "png"
 			mime = "image/png"
 		} else if strings.Contains(contentType, "gif") {
+			ext = "gif"
 			mime = "image/gif"
 		} else {
 			session := getSession(r)
@@ -648,12 +686,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)"
+	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,'',?)"
 	result, err := db.Exec(
 		query,
 		me.ID,
 		mime,
-		filedata,
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -666,7 +703,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-
+	// postのimgDataを../public/image/{id}.{ext}に保存
+	if err := os.WriteFile(fmt.Sprintf("../public/image/%d.%s", pid, ext), filedata, 0644); err != nil {
+		log.Print(err)
+		return
+	}
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
 
