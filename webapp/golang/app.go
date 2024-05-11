@@ -85,6 +85,7 @@ func dbInitialize() {
 		"DELETE FROM comments WHERE id > 100000",
 		"UPDATE users SET del_flg = 0",
 		"UPDATE users SET del_flg = 1 WHERE id % 50 = 0",
+		"UPDATE posts SET comment_count = (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id)",
 	}
 
 	for _, sql := range sqls {
@@ -224,7 +225,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	// コメント数を取得するためのクエリと引数の準備
-	query, args, err := sqlx.In("SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
+	query, args, err := sqlx.In("SELECT id, COUNT(*) AS count FROM posts WHERE id IN (?) GROUP BY id", postIDs)
 	if err != nil {
 		log.Print(err)
 		return nil, err
@@ -232,8 +233,8 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	query = db.Rebind(query)
 
 	var countResults []struct {
-		PostID int `db:"post_id"`
-		Count  int `db:"count"`
+		PostID int `db:"id"`
+		Count  int `db:"comment_count"`
 	}
 	err = db.Select(&countResults, query, args...)
 	if err != nil {
@@ -871,6 +872,13 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
 	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	query = "UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?"
+	_, err = db.Exec(query, postID)
 	if err != nil {
 		log.Print(err)
 		return
