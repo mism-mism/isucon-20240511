@@ -88,6 +88,38 @@ func dbInitialize() {
 	for _, sql := range sqls {
 		db.Exec(sql)
 	}
+	posts := make([]Post, 0)
+	err := db.Select(&posts, "SELECT * FROM posts")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	for _, post := range posts {
+		// postのimgDataを../public/image/{id}.{ext}に保存
+		ext := ""
+		if post.Mime == "image/jpeg" {
+			ext = "jpg"
+		}
+		if post.Mime == "image/png" {
+			ext = "png"
+		}
+		if post.Mime == "image/gif" {
+			ext = "gif"
+		}
+		if ext == "" {
+			continue
+		}
+		_, err := os.Stat(fmt.Sprintf("../public/image/%d.%s", post.ID, ext))
+		exist := err == nil
+		if exist {
+			continue
+		}
+		if err := os.WriteFile(fmt.Sprintf("../public/image/%d.%s", post.ID, ext), post.Imgdata, 0644); err != nil {
+			log.Print(err)
+			return
+		}
+	}
 }
 
 func tryLogin(accountName, password string) *User {
@@ -614,14 +646,18 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
+	ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
+			ext = "jpg"
 			mime = "image/jpeg"
 		} else if strings.Contains(contentType, "png") {
+			ext = "png"
 			mime = "image/png"
 		} else if strings.Contains(contentType, "gif") {
+			ext = "gif"
 			mime = "image/gif"
 		} else {
 			session := getSession(r)
@@ -648,12 +684,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)"
+	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,'',?)"
 	result, err := db.Exec(
 		query,
 		me.ID,
 		mime,
-		filedata,
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -666,7 +701,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-
+	// postのimgDataを../public/image/{id}.{ext}に保存
+	if err := os.WriteFile(fmt.Sprintf("../public/image/%d.%s", pid, ext), filedata, 0644); err != nil {
+		log.Print(err)
+		return
+	}
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
 
