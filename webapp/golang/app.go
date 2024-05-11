@@ -424,7 +424,7 @@ LIMIT 20
 		log.Print(err)
 		return
 	}
-
+	log.Print(len(results))
 	posts, err := makePosts(results, getCSRFToken(r), false)
 	if err != nil {
 		log.Print(err)
