@@ -225,7 +225,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	// コメント数を取得するためのクエリと引数の準備
-	query, args, err := sqlx.In("SELECT id, COUNT(*) AS count FROM posts WHERE id IN (?) GROUP BY id", postIDs)
+	query, args, err := sqlx.In("SELECT id, COUNT(*) AS comment_count FROM posts WHERE id IN (?) GROUP BY id", postIDs)
 	if err != nil {
 		log.Print(err)
 		return nil, err
