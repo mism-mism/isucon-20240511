@@ -644,7 +644,7 @@ FROM
 JOIN
     users AS u ON p.user_id = u.id
 WHERE
-    user.id NOT IN (?)
+    u.id NOT IN (?)
 AND p.created_at <= ?
 ORDER BY
     p.created_at DESC
