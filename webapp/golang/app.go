@@ -406,10 +406,22 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT"+
-		" p.id,p.user_id,p.body,p.created_at,p.mime "+
-		" u.id AS user.user_id, u.username AS user.username, u.del_flg AS user.del_flg"+
-		"FROM `posts` AS p JOIN `users` AS u ON p.user_id=u.id WHERE u.del_flg = 0  ORDER BY p.created_at DESC LIMIT 20")
+	query := `
+SELECT
+    p.id, p.user_id, p.imgdata, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    u.del_flg = 0
+ORDER BY
+    p.created_at DESC
+LIMIT 20
+`
+	err := db.Select(&results, query)
 	if err != nil {
 		log.Print(err)
 		return
@@ -454,12 +466,20 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-
-	err = db.Select(&results, "SELECT `p.id`, `p.user_id`, `p.body`, `p.mime`, `p.created_at`"+
-		" u.id AS user.user_id, u.username AS user.username, u.del_flg AS user.del_flg"+
-		"FROM `posts AS p` "+
-		"JOIN users AS u ON p.user_id = u.id"+
-		"WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	query := `
+SELECT
+    p.id, p.user_id, p.imgdata, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    WHERE p.user_id = ?
+ ORDER BY p.created_at DESC
+`
+	err = db.Select(&results, query, user.ID)
 	if err != nil {
 		log.Print(err)
 		return
@@ -545,11 +565,24 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-
+	query := `
+SELECT
+    p.id, p.user_id, p.imgdata, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    u.del_flg = 0
+AND p.created_at <= ?
+ORDER BY
+    p.created_at DESC
+LIMIT 20
+`
 	results := []Post{}
-	err = db.Select(&results, "SELECT p.id,p.user_id,p.body,p.created_at,p.mime "+
-		"u.id AS user.user_id, u.username AS user.username, u.del_flg AS user.del_flg "+
-		"FROM `posts` AS p JOIN `users` AS u ON p.user_id=u.id WHERE u.del_flg = 0 AND `created_at` <= ? ORDER BY p.created_at DESC LIMIT 20", t.Format(ISO8601Format))
+	err = db.Select(&results, query, t.Format(ISO8601Format))
 	if err != nil {
 		log.Print(err)
 		return
@@ -583,12 +616,20 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
+	query := `
+SELECT
+    p.id, p.user_id, p.imgdata, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    p.id = ?
+`
 	results := []Post{}
-	err = db.Select(&results, "SELECT p.id, p.user_id, p.body, p.created_at, p.mime, u.id AS user.user_id, u.username AS user.username, u.del_flg AS user.del_flg "+
-		"FROM `posts` as p"+
-		"join `users` on `posts`.`user_id` = `users`.`id`"+
-		" WHERE `id` = ?", pid)
+	err = db.Select(&results, query, pid)
 	if err != nil {
 		log.Print(err)
 		return
