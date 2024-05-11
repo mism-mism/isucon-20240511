@@ -611,7 +611,6 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := `
-SELECT
     SELECT posts.id, posts.user_id, posts.body, posts.mime, posts.created_at,
 		 users.id AS "users.id", users.account_name AS "users.account_name", users.authority AS "users.authority", users.created_at AS "users.created_at"
 		FROM posts 
