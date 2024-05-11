@@ -204,6 +204,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	for _, p := range results {
 		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
 		if err != nil {
+			log.Print(err)
 			return nil, err
 		}
 
@@ -214,12 +215,14 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		var comments []Comment
 		err = db.Select(&comments, query, p.ID)
 		if err != nil {
+			log.Print(err)
 			return nil, err
 		}
 
 		for i := 0; i < len(comments); i++ {
 			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
 			if err != nil {
+				log.Print(err)
 				return nil, err
 			}
 		}
@@ -612,7 +615,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
     SELECT posts.id, posts.user_id, posts.body, posts.mime, posts.created_at,
-		 users.id AS "user.id", users.account_name AS "user.account_name", users.authority AS "user.authority", users.created_at AS "user.created_at"
+		 users.id AS "user.id", users.account_name AS "user.account_name", users.authority AS "user.authority", users.created_at AS "user.created_at"	
 		FROM posts 
 		JOIN users ON posts.user_id = users.id
 		WHERE posts.id = ?
