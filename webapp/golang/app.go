@@ -94,31 +94,33 @@ func dbInitialize() {
 		log.Print(err)
 		return
 	}
-
+	// 並列で保存するようにする
 	for _, post := range posts {
-		// postのimgDataを../public/image/{id}.{ext}に保存
-		ext := ""
-		if post.Mime == "image/jpeg" {
-			ext = "jpg"
-		}
-		if post.Mime == "image/png" {
-			ext = "png"
-		}
-		if post.Mime == "image/gif" {
-			ext = "gif"
-		}
-		if ext == "" {
-			continue
-		}
-		_, err := os.Stat(fmt.Sprintf("../public/image/%d.%s", post.ID, ext))
-		exist := err == nil
-		if exist {
-			continue
-		}
-		if err := os.WriteFile(fmt.Sprintf("../public/image/%d.%s", post.ID, ext), post.Imgdata, 0644); err != nil {
-			log.Print(err)
-			return
-		}
+		go saveImage(post) // 各画像保存操作をgoroutineで実行
+	}
+}
+
+func saveImage(post Post) {
+	ext := ""
+	switch post.Mime {
+	case "image/jpeg":
+		ext = "jpg"
+	case "image/png":
+		ext = "png"
+	case "image/gif":
+		ext = "gif"
+	}
+	if ext == "" {
+		return
+	}
+
+	path := fmt.Sprintf("../public/image/%d.%s", post.ID, ext)
+	if _, err := os.Stat(path); err == nil {
+		return // ファイルが存在する場合はスキップ
+	}
+
+	if err := os.WriteFile(path, post.Imgdata, 0644); err != nil {
+		log.Print(err)
 	}
 }
 
