@@ -612,7 +612,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
     SELECT posts.id, posts.user_id, posts.body, posts.mime, posts.created_at,
-		 users.id AS "user.id", users.account_name AS "user.account_name", users.authority AS "users.authority", users.created_at AS "users.created_at"
+		 users.id AS "user.id", users.account_name AS "user.account_name", users.authority AS "user.authority", users.created_at AS "user.created_at"
 		FROM posts 
 		JOIN users ON posts.user_id = users.id
 		WHERE posts.id = ?
