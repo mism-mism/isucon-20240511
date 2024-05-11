@@ -26,8 +26,9 @@ import (
 )
 
 var (
-	db    *sqlx.DB
-	store *gsm.MemcacheStore
+	db             *sqlx.DB
+	store          *gsm.MemcacheStore
+	deletedUserIDs []int
 )
 
 const (
@@ -99,6 +100,12 @@ func dbInitialize() {
 	for _, post := range posts {
 		go saveImage(post) // 各画像保存操作をgoroutineで実行
 	}
+	query := "SELECT id FROM users WHERE id % 50 = 0"
+	err = db.Select(&deletedUserIDs, query)
+	if err != nil {
+		log.Print(err)
+		return
+	}
 }
 
 func saveImage(post Post) {
@@ -127,7 +134,16 @@ func saveImage(post Post) {
 
 func tryLogin(accountName, password string) *User {
 	u := User{}
-	err := db.Get(&u, "SELECT * FROM users WHERE account_name = ? AND del_flg = 0", accountName)
+	query := "SELECT * FROM users WHERE account_name = ? AND id NOT IN (?)"
+
+	query, args, err := sqlx.In(query, accountName, deletedUserIDs)
+	if err != nil {
+		log.Print(err)
+		return nil
+	}
+
+	query = db.Rebind(query)
+	err = db.Get(&u, query, args...)
 	if err != nil {
 		return nil
 	}
@@ -462,12 +478,19 @@ FROM
 JOIN
     users AS u ON p.user_id = u.id
 WHERE
-    u.del_flg = 0
+    u.id NOT IN (?)
 ORDER BY
     p.created_at DESC
 LIMIT 20
 `
-	err := db.Select(&results, query)
+	query, args, err := sqlx.In(query, deletedUserIDs)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	query = db.Rebind(query)
+	err = db.Select(&results, query, args...)
 	if err != nil {
 		log.Print(err)
 		return
@@ -620,14 +643,20 @@ FROM
 JOIN
     users AS u ON p.user_id = u.id
 WHERE
-    u.del_flg = 0
+    user.id NOT IN (?)
 AND p.created_at <= ?
 ORDER BY
     p.created_at DESC
 LIMIT 20
 `
 	results := []Post{}
-	err = db.Select(&results, query, t.Format(ISO8601Format))
+	query, args, err := sqlx.In(query, deletedUserIDs, t.Format(ISO8601Format))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	query = db.Rebind(query)
+	err = db.Select(&results, query, args...)
 	if err != nil {
 		log.Print(err)
 		return
@@ -904,7 +933,14 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	IDs := []int{}
 	for _, id := range r.Form["uid[]"] {
+		i, err := strconv.Atoi(id)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		IDs = append(IDs, i)
 		db.Exec(query, 1, id)
 	}
 
