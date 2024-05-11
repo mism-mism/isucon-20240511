@@ -403,7 +403,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 SELECT
-    p.id, p.user_id, "" as imgdata, p.body, p.mime, p.created_at,
+    p.id, p.user_id, p.body, p.mime, p.created_at,
     u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
     u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
 FROM
@@ -463,7 +463,7 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	results := []Post{}
 	query := `
 SELECT
-    p.id, p.user_id, "" as imgdata, p.body, p.mime, p.created_at,
+    p.id, p.user_id, p.body, p.mime, p.created_at,
     u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
     u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
 FROM
@@ -561,7 +561,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
 SELECT
-    p.id, p.user_id, "" as imgdata, p.body, p.mime, p.created_at,
+    p.id, p.user_id, p.body, p.mime, p.created_at,
     u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
     u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
 FROM
@@ -612,7 +612,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 	query := `
 SELECT
-    p.id, p.user_id, "" as imgdata, p.body, p.mime, p.created_at,
+    p.id, p.user_id, p.body, p.mime, p.created_at,
     u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
     u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
 FROM
