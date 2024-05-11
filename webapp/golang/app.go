@@ -202,7 +202,6 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	var posts []Post
 
 	for _, p := range results {
-		log.Print(p.ID)
 		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
 		if err != nil {
 			log.Print(err)
@@ -234,8 +233,8 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		p.Comments = comments
-
 		p.CSRFToken = csrfToken
+		posts = append(posts, p)
 	}
 
 	return posts, nil
