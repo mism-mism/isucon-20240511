@@ -207,19 +207,30 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		postIDs[i] = p.ID
 	}
 
-	// コメント数を取得
+	// コメント数を取得するためのクエリと引数の準備
 	query, args, err := sqlx.In("SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
 	if err != nil {
 		log.Print(err)
 		return nil, err
 	}
 	query = db.Rebind(query)
-	counts := make(map[int]int)
-	err = db.Select(&counts, query, args...)
+
+	var countResults []struct {
+		PostID int `db:"post_id"`
+		Count  int `db:"count"`
+	}
+	err = db.Select(&countResults, query, args...)
 	if err != nil {
 		log.Print(err)
 		return nil, err
 	}
+
+	// 取得した結果をマップに変換
+	counts := make(map[int]int)
+	for _, cr := range countResults {
+		counts[cr.PostID] = cr.Count
+	}
+	
 	for _, p := range results {
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
