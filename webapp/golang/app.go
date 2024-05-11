@@ -197,29 +197,39 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 		return value.(string)
 	}
 }
+
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
-	postIDs := make([]int, len(results))
-	for i, p := range results {
-		postIDs[i] = p.ID
-	}
 
-	// コメント数を一度に取得
-	commentCounts, err := getCommentCounts(postIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	// 全てのコメントとユーザー情報を一度に取得
-	comments, err := getAllComments(postIDs, allComments)
-	if err != nil {
-		return nil, err
-	}
-
-	// 投稿ごとにデータを組み立て
 	for _, p := range results {
-		p.CommentCount = commentCounts[p.ID]
-		p.Comments = comments[p.ID]
+		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+		if !allComments {
+			query += " LIMIT 3"
+		}
+		var comments []Comment
+		err = db.Select(&comments, query, p.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := 0; i < len(comments); i++ {
+			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// reverse
+		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
+			comments[i], comments[j] = comments[j], comments[i]
+		}
+
+		p.Comments = comments
 
 		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
 		if err != nil {
@@ -237,69 +247,6 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	return posts, nil
-}
-
-func getCommentCounts(postIDs []int) (map[int]int, error) {
-	query, args, err := sqlx.In("SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
-	if err != nil {
-		return nil, err
-	}
-	query = db.Rebind(query) // sqlxがドライバに適したバインドvarを使うようクエリを再構成
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	counts := make(map[int]int)
-	for rows.Next() {
-		var id, count int
-		if err := rows.Scan(&id, &count); err != nil {
-			return nil, err
-		}
-		counts[id] = count
-	}
-	return counts, nil
-}
-
-func getAllComments(postIDs []int, allComments bool) (map[int][]Comment, error) {
-	var query string
-	if allComments {
-		query = `SELECT c.*, u.* FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id IN (?)`
-	} else {
-		// ROW_NUMBER()を使用して各post_idごとにコメントを3つまで取得
-		query = `
-		SELECT * FROM (
-			SELECT c.*, u.*, ROW_NUMBER() OVER (PARTITION BY c.post_id ORDER BY c.created_at DESC) as rn
-			FROM comments c
-			JOIN users u ON c.user_id = u.id
-			WHERE c.post_id IN (?)
-		) as sub
-		WHERE sub.rn <= 3`
-	}
-
-	query, args, err := sqlx.In(query, postIDs)
-	if err != nil {
-		return nil, err
-	}
-	query = db.Rebind(query)
-
-	rows, err := db.Queryx(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	comments := make(map[int][]Comment)
-	for rows.Next() {
-		var comment Comment
-		if err := rows.StructScan(&comment); err != nil {
-			return nil, err
-		}
-		comments[comment.PostID] = append(comments[comment.PostID], comment)
-	}
-	return comments, nil
 }
 
 func imageURL(p Post) string {
@@ -466,7 +413,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC LIMIT 20")
 	if err != nil {
 		log.Print(err)
 		return
