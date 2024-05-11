@@ -201,12 +201,37 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
-	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			return nil, err
-		}
+	// Post IDs を収集
+	postIDs := make([]int, len(results))
+	for i, p := range results {
+		postIDs[i] = p.ID
+	}
 
+	// コメント数を取得するためのクエリと引数の準備
+	query, args, err := sqlx.In("SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+	query = db.Rebind(query)
+
+	var countResults []struct {
+		PostID int `db:"post_id"`
+		Count  int `db:"count"`
+	}
+	err = db.Select(&countResults, query, args...)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+
+	// 取得した結果をマップに変換
+	counts := make(map[int]int)
+	for _, cr := range countResults {
+		counts[cr.PostID] = cr.Count
+	}
+
+	for _, p := range results {
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
 			query += " LIMIT 3"
@@ -214,13 +239,38 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		var comments []Comment
 		err = db.Select(&comments, query, p.ID)
 		if err != nil {
+			log.Print(err)
 			return nil, err
 		}
 
-		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
+		// ユーザー情報を取得
+		if len(comments) > 0 {
+			userIDs := make([]int, len(comments))
+			for i, c := range comments {
+				userIDs[i] = c.UserID
+			}
+			var users []User
+			if len(userIDs) > 0 {
+				userQuery, userArgs, err := sqlx.In("SELECT * FROM users WHERE id IN (?)", userIDs)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+				userQuery = db.Rebind(userQuery)
+				err = db.Select(&users, userQuery, userArgs...)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+			}
+			userMap := make(map[int]User)
+			for _, user := range users {
+				userMap[user.ID] = user
+			}
+
+			// ユーザー情報をコメントに割り当て
+			for i := range comments {
+				comments[i].User = userMap[comments[i].UserID]
 			}
 		}
 
@@ -229,21 +279,10 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			comments[i], comments[j] = comments[j], comments[i]
 		}
 
+		p.CommentCount = counts[p.ID]
 		p.Comments = comments
-
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
-
 		p.CSRFToken = csrfToken
-
-		if p.User.DelFlg == 0 {
-			posts = append(posts, p)
-		}
-		if len(posts) >= postsPerPage {
-			break
-		}
+		posts = append(posts, p)
 	}
 
 	return posts, nil
@@ -413,7 +452,22 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` ORDER BY `created_at` DESC")
+	query := `
+SELECT
+    p.id, p.user_id, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    u.del_flg = 0
+ORDER BY
+    p.created_at DESC
+LIMIT 20
+`
+	err := db.Select(&results, query)
 	if err != nil {
 		log.Print(err)
 		return
@@ -458,8 +512,19 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	query := `
+SELECT
+    p.id, p.user_id, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE p.user_id = ?
+ ORDER BY p.created_at DESC
+`
+	err = db.Select(&results, query, user.ID)
 	if err != nil {
 		log.Print(err)
 		return
@@ -545,9 +610,24 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-
+	query := `
+SELECT
+    p.id, p.user_id, p.body, p.mime, p.created_at,
+    u.id AS "user.id", u.account_name AS "user.account_name", u.passhash AS "user.passhash",
+    u.authority AS "user.authority", u.del_flg AS "user.del_flg", u.created_at AS "user.created_at"
+FROM
+    posts AS p
+JOIN
+    users AS u ON p.user_id = u.id
+WHERE
+    u.del_flg = 0
+AND p.created_at <= ?
+ORDER BY
+    p.created_at DESC
+LIMIT 20
+`
 	results := []Post{}
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC", t.Format(ISO8601Format))
+	err = db.Select(&results, query, t.Format(ISO8601Format))
 	if err != nil {
 		log.Print(err)
 		return
@@ -581,9 +661,15 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-
+	query := `
+    SELECT posts.id, posts.user_id, posts.body, posts.mime, posts.created_at,
+		 users.id AS "user.id", users.account_name AS "user.account_name", users.authority AS "user.authority", users.created_at AS "user.created_at"	
+		FROM posts 
+		JOIN users ON posts.user_id = users.id
+		WHERE posts.id = ?
+`
 	results := []Post{}
-	err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	err = db.Select(&results, query, pid)
 	if err != nil {
 		log.Print(err)
 		return
@@ -849,7 +935,7 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		user,
 		password,
 		host,
