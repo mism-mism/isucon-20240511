@@ -230,7 +230,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	for _, cr := range countResults {
 		counts[cr.PostID] = cr.Count
 	}
-	
+
 	for _, p := range results {
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
@@ -242,31 +242,36 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			log.Print(err)
 			return nil, err
 		}
-		// ユーザー情報を取得
-		userIDs := make([]int, len(comments))
-		for i, c := range comments {
-			userIDs[i] = c.UserID
-		}
-		var users []User
-		userQuery, userArgs, err := sqlx.In("SELECT * FROM users WHERE id IN (?)", userIDs)
-		if err != nil {
-			log.Print(err)
-			return nil, err
-		}
-		userQuery = db.Rebind(userQuery)
-		err = db.Select(&users, userQuery, userArgs...)
-		if err != nil {
-			log.Print(err)
-			return nil, err
-		}
-		userMap := make(map[int]User)
-		for _, user := range users {
-			userMap[user.ID] = user
-		}
 
-		// ユーザー情報をコメントに割り当て
-		for i := range comments {
-			comments[i].User = userMap[comments[i].UserID]
+		// ユーザー情報を取得
+		if len(comments) > 0 {
+			userIDs := make([]int, len(comments))
+			for i, c := range comments {
+				userIDs[i] = c.UserID
+			}
+			var users []User
+			if len(userIDs) > 0 {
+				userQuery, userArgs, err := sqlx.In("SELECT * FROM users WHERE id IN (?)", userIDs)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+				userQuery = db.Rebind(userQuery)
+				err = db.Select(&users, userQuery, userArgs...)
+				if err != nil {
+					log.Print(err)
+					return nil, err
+				}
+			}
+			userMap := make(map[int]User)
+			for _, user := range users {
+				userMap[user.ID] = user
+			}
+
+			// ユーザー情報をコメントに割り当て
+			for i := range comments {
+				comments[i].User = userMap[comments[i].UserID]
+			}
 		}
 
 		// reverse
