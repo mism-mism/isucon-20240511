@@ -430,6 +430,7 @@ LIMIT 20
 		log.Print(err)
 		return
 	}
+	log.Print(len(posts))
 
 	fmap := template.FuncMap{
 		"imageURL": imageURL,
