@@ -623,12 +623,15 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
+	log.Print(results)
 
 	posts, err := makePosts(results, getCSRFToken(r), true)
 	if err != nil {
 		log.Print(err)
 		return
 	}
+
+	log.Print(posts)
 
 	if len(posts) == 0 {
 		w.WriteHeader(http.StatusNotFound)
@@ -642,7 +645,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	fmap := template.FuncMap{
 		"imageURL": imageURL,
 	}
-
+	
 	template.Must(template.New("layout.html").Funcs(fmap).ParseFiles(
 		getTemplPath("layout.html"),
 		getTemplPath("post_id.html"),
