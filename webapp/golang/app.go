@@ -201,13 +201,21 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
-	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			log.Print(err)
-			return nil, err
-		}
+	// Post IDs を収集
+	postIDs := make([]int, len(results))
+	for i, p := range results {
+		postIDs[i] = p.ID
+	}
 
+	// コメント数を取得
+	counts := make(map[int]int)
+	err := db.Select(&counts, "SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY post_id", postIDs)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+	userIDs := make([]int, 0)
+	for _, p := range results {
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
 			query += " LIMIT 3"
@@ -219,22 +227,38 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			return nil, err
 		}
 
-		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				log.Print(err)
-				return nil, err
-			}
+		// ユーザーIDを収集
+		for _, comment := range comments {
+			userIDs = append(userIDs, comment.UserID)
 		}
-
+		
 		// reverse
 		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
 			comments[i], comments[j] = comments[j], comments[i]
 		}
 
+		p.CommentCount = counts[p.ID]
 		p.Comments = comments
 		p.CSRFToken = csrfToken
 		posts = append(posts, p)
+	}
+	// ユーザー情報を取得
+	var users []User
+	err = db.Select(&users, "SELECT * FROM users WHERE id IN (?)", userIDs)
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+	userMap := make(map[int]User)
+	for _, user := range users {
+		userMap[user.ID] = user
+	}
+
+	// ユーザー情報をコメントに割り当て
+	for i := range posts {
+		for j := range posts[i].Comments {
+			posts[i].Comments[j].User = userMap[posts[i].Comments[j].UserID]
+		}
 	}
 
 	return posts, nil
